@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+.venv/
+dist/
+build/
+*.egg-info/
+# add Information and User Guide Folder
+Information/
+User Guide/
+# add .agents folder
+.agents/
