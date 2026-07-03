@@ -24,3 +24,33 @@ class Producer:
         
         exchange = channel.default_exchange
         await exchange.publish(message, routing_key=queue_name)
+
+    async def publish_delayed(self, queue_name: str, data: Any, delay_ms: int, headers: dict | None = None, **kwargs):
+        """Publish a message to a queue after a specific delay using DLX and TTL."""
+        channel = await self.conn_manager.get_channel()
+        payload = self.serializer.serialize(data)
+        
+        message = aio_pika.Message(
+            body=payload,
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            headers=headers or {}
+        )
+        
+        # Ensure target queue exists so the dead-letter exchange can route to it
+        await channel.declare_queue(queue_name, durable=True)
+        
+        # Declare a waiting queue that will hold the message for delay_ms
+        delayed_queue_name = f"delayed.{queue_name}.{delay_ms}"
+        
+        await channel.declare_queue(
+            delayed_queue_name,
+            durable=True,
+            arguments={
+                "x-message-ttl": delay_ms,
+                "x-dead-letter-exchange": "",  # Default exchange routes exactly to queue name
+                "x-dead-letter-routing-key": queue_name
+            }
+        )
+        
+        exchange = channel.default_exchange
+        await exchange.publish(message, routing_key=delayed_queue_name)

@@ -8,6 +8,7 @@ from .connection import ConnectionManager
 from .producer import Producer
 from .consumer import Consumer
 from .serializers import JsonSerializer
+from .tasks import TaskRegistry
 
 # Configure default logger for the SDK
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -56,6 +57,9 @@ class Messaging:
             enable_dlq=self.config.enable_dlq,
             serializer=self.serializer
         )
+        
+        # 7. Initialize Task Registry
+        self.task_registry = TaskRegistry()
 
     def shutdown(self):
         """Close connection and shutdown the background loop gracefully."""
@@ -76,3 +80,43 @@ class Messaging:
     def consume(self, queue: str, callback: Callable, **kwargs):
         """Consume messages from a queue."""
         self._loop.run_coroutine(self.consumer.consume(queue, callback))
+
+    def task(self, name: str):
+        """Decorator to register a task function."""
+        def decorator(func):
+            self.task_registry.register(name, func)
+            return func
+        return decorator
+
+    def send_task(self, name: str, queue: str, args: list = None, kwargs: dict = None, delay_ms: int = 0, **publish_kwargs):
+        """Send a task to a specific queue, optionally with a delay."""
+        payload = {
+            "task_name": name,
+            "args": args or [],
+            "kwargs": kwargs or {}
+        }
+        
+        if delay_ms and delay_ms > 0:
+            self._loop.run_coroutine(self.producer.publish_delayed(queue, payload, delay_ms, **publish_kwargs))
+        else:
+            self._loop.run_coroutine(self.producer.publish(queue, payload, **publish_kwargs))
+            
+    def consume_tasks(self, queue: str, **kwargs):
+        """Start consuming tasks from the specified queue."""
+        def task_worker(data: dict):
+            if not isinstance(data, dict):
+                logger.error(f"Received invalid task payload: {data}. Expected dict.")
+                return
+                
+            task_name = data.get("task_name")
+            args = data.get("args", [])
+            task_kwargs = data.get("kwargs", {})
+            
+            if not task_name:
+                logger.error("Received task payload without 'task_name'. Dropping.")
+                return
+                
+            logger.info(f"Executing task '{task_name}'")
+            self.task_registry.execute(task_name, *args, **task_kwargs)
+            
+        self.consume(queue, callback=task_worker, **kwargs)
