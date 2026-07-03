@@ -3,7 +3,7 @@ name = "rab_q"
 version = "1.0.0"
 description = "Enterprise-Grade Messaging SDK for RabbitMQ"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "aio-pika>=9.4.0",
     "pydantic>=2.7.0",
